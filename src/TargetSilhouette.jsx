@@ -1,23 +1,36 @@
+
 import { FIGURES } from './figures';
 
 export default function TargetSilhouette({ figureId }) {
   if (!figureId) return null;
-  const fig = FIGURES.find((f) => f.id === figureId);
-  if (!fig) return null;
 
-  // Compute bounding box across all shapes
+  const fig = FIGURES.find((f) => f.id === figureId);
+
+  if (!fig || !Array.isArray(fig.shapes) || fig.shapes.length === 0) {
+    return null;
+  }
+
   const allPts = fig.shapes.flat();
+
+  if (allPts.length === 0) return null;
+
   const xs = allPts.map(([x]) => x);
   const ys = allPts.map(([, y]) => y);
+
   const minX = Math.min(...xs);
   const minY = Math.min(...ys);
   const maxX = Math.max(...xs);
   const maxY = Math.max(...ys);
-  const pad = 16;
-  const w = maxX - minX + pad * 2;
-  const h = maxY - minY + pad * 2;
-  const ox = -minX + pad;
-  const oy = -minY + pad;
+
+  const padding = 16;
+  const labelHeight = 28;
+
+  const width = maxX - minX + padding * 2;
+  const shapeHeight = maxY - minY + padding * 2;
+  const height = shapeHeight + labelHeight;
+
+  const offsetX = -minX + padding;
+  const offsetY = -minY + padding;
 
   return (
     <div
@@ -29,22 +42,31 @@ export default function TargetSilhouette({ figureId }) {
         zIndex: 1,
       }}
     >
-      <svg width={w} height={h} style={{ display: 'block' }}>
-        {fig.shapes.map((shape, i) => (
+      <svg
+        width={width}
+        height={height}
+        style={{ display: 'block', overflow: 'visible' }}
+        role="img"
+        aria-label={`Silhouette : ${fig.label}`}
+      >
+        {fig.shapes.map((shape, index) => (
           <polygon
-            key={i}
-            points={shape.map(([x, y]) => `${x + ox},${y + oy}`).join(' ')}
+            key={index}
+            points={shape
+              .map(([x, y]) => `${x + offsetX},${y + offsetY}`)
+              .join(' ')}
             fill="rgba(80,80,80,0.13)"
             stroke="rgba(80,80,80,0.32)"
             strokeWidth="1.5"
           />
         ))}
+
         <text
-          x={w / 2}
-          y={h + 16}
+          x={width / 2}
+          y={shapeHeight + 12}
           textAnchor="middle"
           fontSize="12"
-          fill="#999"
+          fill="#777"
           fontFamily="sans-serif"
         >
           {fig.emoji} {fig.label}

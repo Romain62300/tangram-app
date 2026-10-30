@@ -1,19 +1,26 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
-const PADDING = 20; // px padding around the shape inside its SVG viewport
+const PADDING = 20; // Padding around the shape inside its SVG viewport
 
 export default function TangramPiece({
-  piece,          // { id, label, color }
-  state,          // { x, y, rotation, points }  — points in px, piece-local coords
+  piece,
+  state,
   onDragStart,
   onRotate,
-  onVertexDrag,  // (id, vertexIndex, newLocalX, newLocalY)
+  onVertexDrag,
   isSelected,
-  editHandles,   // boolean: show vertex handles
+  editHandles,
 }) {
   const { color, id } = piece;
   const { x, y, rotation, points } = state;
-  const svgRef = useRef(null);
+  const vertexDragCleanupRef = useRef(null);
+
+  // Remove global listeners if this component unmounts during a vertex drag.
+  useEffect(() => {
+    return () => {
+      vertexDragCleanupRef.current?.();
+    };
+  }, []);
 
   if (!points || points.length === 0) return null;
 
@@ -26,10 +33,9 @@ export default function TangramPiece({
   const w = maxX - minX + PADDING * 2;
   const h = maxY - minY + PADDING * 2;
 
-  // translate so shape sits inside padding
+  // Translate the shape so it sits inside the SVG padding.
   const ox = -minX + PADDING;
   const oy = -minY + PADDING;
-
   const svgPoints = points.map(([px, py]) => `${px + ox},${py + oy}`).join(' ');
 
   function handleBodyMouseDown(e) {
@@ -47,12 +53,15 @@ export default function TangramPiece({
     e.preventDefault();
     e.stopPropagation();
 
+    // Ensure a previous drag cannot leave duplicate global listeners.
+    vertexDragCleanupRef.current?.();
+
     const startMX = e.clientX;
     const startMY = e.clientY;
     const [startVX, startVY] = points[vi];
 
     function onMove(me) {
-      // Convert mouse delta into piece-local coords accounting for rotation
+      // Convert the mouse movement to the piece's local rotated coordinates.
       const rad = (-rotation * Math.PI) / 180;
       const dmx = me.clientX - startMX;
       const dmy = me.clientY - startMY;
@@ -60,12 +69,18 @@ export default function TangramPiece({
       const localDy = dmx * Math.sin(rad) + dmy * Math.cos(rad);
       onVertexDrag(id, vi, startVX + localDx, startVY + localDy);
     }
-    function onUp() {
+
+    function cleanup() {
       window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('mouseup', cleanup);
+      if (vertexDragCleanupRef.current === cleanup) {
+        vertexDragCleanupRef.current = null;
+      }
     }
+
+    vertexDragCleanupRef.current = cleanup;
     window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
+    window.addEventListener('mouseup', cleanup);
   }
 
   return (
@@ -90,7 +105,6 @@ export default function TangramPiece({
       onWheel={handleWheel}
     >
       <svg
-        ref={svgRef}
         width={w}
         height={h}
         style={{ overflow: 'visible', display: 'block' }}

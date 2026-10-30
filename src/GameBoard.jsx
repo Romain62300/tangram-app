@@ -42,6 +42,38 @@ function getInitialPieceStates() {
 
 const INITIAL_CATALOGUE = buildCatalogue();
 
+function isValidSave(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
+
+  const { catalogue, pieceStates, pieceOrder } = data;
+  if (!Array.isArray(catalogue) || !Array.isArray(pieceOrder) ||
+      !pieceStates || typeof pieceStates !== 'object' || Array.isArray(pieceStates)) return false;
+  if (catalogue.length < 1 || catalogue.length > 100 || pieceOrder.length !== catalogue.length) return false;
+
+  const ids = new Set();
+  for (const piece of catalogue) {
+    if (!piece || typeof piece.id !== 'string' ||
+        !/^[a-zA-Z0-9_-]{1,100}$/.test(piece.id) ||
+        typeof piece.label !== 'string' || piece.label.length > 100 ||
+        typeof piece.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(piece.color) ||
+        ids.has(piece.id)) return false;
+    ids.add(piece.id);
+
+    const state = Object.getOwnPropertyDescriptor(pieceStates, piece.id)?.value;
+    if (!state || ![state.x, state.y, state.rotation].every(
+      (value) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 100000
+    ) || !Array.isArray(state.points) || state.points.length < 3 || state.points.length > 100 ||
+        !state.points.every((point) => Array.isArray(point) && point.length === 2 &&
+          point.every((value) => typeof value === 'number' && Number.isFinite(value) && Math.abs(value) <= 100000))) {
+      return false;
+    }
+  }
+
+  return new Set(pieceOrder).size === ids.size &&
+    pieceOrder.every((id) => ids.has(id)) && Object.keys(pieceStates).length === ids.size;
+}
+
+
 // ── component ─────────────────────────────────────────────────────────────────
 
 export default function GameBoard() {
@@ -204,10 +236,15 @@ export default function GameBoard() {
     try {
       const raw = localStorage.getItem('tangram-save');
       if (!raw) return alert('Aucune sauvegarde trouvée.');
-      const { catalogue: cat, pieceStates: ps, pieceOrder: po } = JSON.parse(raw);
-      setCatalogue(cat);
-      setPieceStates(ps);
-      setPieceOrder(po);
+      const data = JSON.parse(raw);
+      if (!isValidSave(data)) {
+        alert('La sauvegarde est invalide.');
+        return;
+      }
+      setCatalogue(data.catalogue);
+      setPieceStates(data.pieceStates);
+      setPieceOrder(data.pieceOrder);
+      setSelectedId(null);
     } catch {
       alert('Erreur lors du chargement.');
     }
@@ -225,21 +262,34 @@ export default function GameBoard() {
   }
 
   function handleImportJSON(e) {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+
+    if (file.size > 1024 * 1024) {
+      alert('Le fichier est trop volumineux (maximum 1 Mo).');
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = () => {
       try {
-        const { catalogue: cat, pieceStates: ps, pieceOrder: po } = JSON.parse(ev.target.result);
-        setCatalogue(cat);
-        setPieceStates(ps);
-        setPieceOrder(po);
+        const data = JSON.parse(reader.result);
+        if (!isValidSave(data)) {
+          alert('Le fichier ne contient pas une sauvegarde Tangram valide.');
+          return;
+        }
+        setCatalogue(data.catalogue);
+        setPieceStates(data.pieceStates);
+        setPieceOrder(data.pieceOrder);
+        setSelectedId(null);
+        alert('Importation réussie.');
       } catch {
         alert('Fichier JSON invalide.');
       }
     };
+    reader.onerror = () => alert('Impossible de lire le fichier.');
     reader.readAsText(file);
-    e.target.value = '';
   }
 
   function handleReset() {
@@ -411,3 +461,4 @@ export default function GameBoard() {
     </div>
   );
 }
+
